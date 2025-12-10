@@ -70,62 +70,65 @@
         });
     }
 
-    function makeDraggable(element) {
+    function makeDraggable(element, handle) {
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
 
-        element.addEventListener('mousedown', (e) => {
+        const startDrag = (clientX, clientY) => {
             isDragging = true;
-            startX = e.clientX;
-            startY = e.clientY;
+            startX = clientX;
+            startY = clientY;
             initialLeft = element.offsetLeft;
             initialTop = element.offsetTop;
-            element.style.cursor = 'grabbing';
+            element.style.opacity = "0.7"; // Visual feedback
+        };
+
+        const moveDrag = (clientX, clientY) => {
+            if (!isDragging) return;
+            const dx = clientX - startX;
+            const dy = clientY - startY;
+            element.style.left = `${initialLeft + dx}px`;
+            element.style.top = `${initialTop + dy}px`;
+        };
+
+        const endDrag = () => {
+            if (isDragging) {
+                isDragging = false;
+                element.style.opacity = "1";
+
+                GM_setValue('torn_racing_pos_left', element.style.left);
+                GM_setValue('torn_racing_pos_top', element.style.top);
+            }
+        };
+
+        handle.addEventListener('mousedown', (e) => {
+            startDrag(e.clientX, e.clientY);
             e.preventDefault();
         });
         document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            element.style.left = `${initialLeft + dx}px`;
-            element.style.top = `${initialTop + dy}px`;
-        });
-        document.addEventListener('mouseup', () => {
             if (isDragging) {
-                isDragging = false;
-                element.style.cursor = 'move';
-                GM_setValue(POS_LEFT_STORAGE, element.style.left);
-                GM_setValue(POS_TOP_STORAGE, element.style.top);
+                moveDrag(e.clientX, e.clientY);
+                e.preventDefault();
             }
         });
+        document.addEventListener('mouseup', endDrag);
 
-        element.addEventListener('touchstart', (e) => {
-            isDragging = true;
+        handle.addEventListener('touchstart', (e) => {
             const touch = e.touches[0];
-            startX = touch.clientX;
-            startY = touch.clientY;
-            initialLeft = element.offsetLeft;
-            initialTop = element.offsetTop;
+            startDrag(touch.clientX, touch.clientY);
             e.preventDefault(); 
+            e.stopPropagation();
         }, { passive: false });
 
         document.addEventListener('touchmove', (e) => {
-            if (!isDragging) return;
-            const touch = e.touches[0];
-            const dx = touch.clientX - startX;
-            const dy = touch.clientY - startY;
-            element.style.left = `${initialLeft + dx}px`;
-            element.style.top = `${initialTop + dy}px`;
-            if(e.cancelable) e.preventDefault(); 
+            if (isDragging) {
+                const touch = e.touches[0];
+                moveDrag(touch.clientX, touch.clientY);
+                e.preventDefault(); 
+            }
         }, { passive: false });
 
-        document.addEventListener('touchend', () => {
-            if (isDragging) {
-                isDragging = false;
-                GM_setValue(POS_LEFT_STORAGE, element.style.left);
-                GM_setValue(POS_TOP_STORAGE, element.style.top);
-            }
-        });
+        document.addEventListener('touchend', endDrag);
     }
 
     function displayRacingSkill(skill) {
