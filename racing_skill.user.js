@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Racing Skill Display New
 // @namespace    https://github.com/qaimali7-web
-// @version      2.1
+// @version      2.3
 // @description  Shows your own Racing Skill on the racing page using the Torn API.
 // @author       Qaim [2370947]
 // @match        https://www.torn.com/page.php?sid=racing*
@@ -11,30 +11,51 @@
 // @grant        GM_getValue
 // @connect      api.torn.com
 // @homepageURL  https://github.com/qaimali7-web/Racing-Skill-Display-New
-// @updateURL    https://raw.githubusercontent.com/qaimali7-web/Racing-Skill-Display-New/main/racing_skill.js
-// @downloadURL  https://raw.githubusercontent.com/qaimali7-web/Racing-Skill-Display-New/main/racing_skill.js
+// @updateURL    https://raw.githubusercontent.com/qaimali7-web/Racing-Skill-Display-New/main/racing_skill.user.js
+// @downloadURL  https://raw.githubusercontent.com/qaimali7-web/Racing-Skill-Display-New/main/racing_skill.user.js
 // ==/UserScript==
 
 (function() {
     'use strict';
 
     const API_KEY_STORAGE = 'torn_racing_api_key';
+    let userCancelled = false; // Flag to prevent spamming prompts if user cancels
 
     // Helper to get API Key
     function getApiKey() {
         let key = GM_getValue(API_KEY_STORAGE);
-        // Basic validation: must be 16 chars
-        if (!key || key.length !== 16) {
-            key = prompt("Please enter your Torn Public API Key (16 characters) to see your Racing Skill:");
-            if (key && key.length === 16) {
-                GM_setValue(API_KEY_STORAGE, key);
-                return key;
-            } else {
-                alert("Invalid API Key. Script cannot run.");
-                return null;
-            }
+
+        // 1. If we already have a valid key saved, return it.
+        if (key && key.length === 16) {
+            return key;
         }
-        return key;
+
+        // 2. If the user already clicked 'Cancel' this session, do not ask again.
+        if (userCancelled) {
+            return null;
+        }
+
+        // 3. Prompt the user
+        key = prompt("Please enter your Torn Public API Key (16 characters) to see your Racing Skill:");
+
+        // 4. Handle User Actions
+        if (key === null) {
+            // User clicked "Cancel"
+            console.log("Racing Skill: User cancelled API prompt. Will not ask again this session.");
+            userCancelled = true;
+            return null;
+        }
+
+        if (key.length === 16) {
+            // User entered a valid-length key
+            GM_setValue(API_KEY_STORAGE, key);
+            return key;
+        } else {
+            // User entered invalid data
+            alert("Invalid API Key length. Script paused for this session.");
+            userCancelled = true; // Stop asking to prevent alert loops
+            return null;
+        }
     }
 
     // Helper to fetch Racing Skill from Torn API
@@ -49,10 +70,11 @@
                     const data = JSON.parse(response.responseText);
                     if (data.error) {
                         console.error("Torn API Error:", data.error.error);
-                        // If key is invalid (code 2), clear it so user can re-enter
+                        // If key is invalid (code 2), clear it so user can re-enter NEXT time (but not immediately to avoid loop)
                         if (data.error.code === 2) {
                              GM_setValue(API_KEY_STORAGE, '');
-                             alert("API Key invalid or expired. Please refresh.");
+                             alert("API Key invalid or expired. Please refresh to try again.");
+                             userCancelled = true; // Stop trying for now
                         }
                         return;
                     }
@@ -77,25 +99,31 @@
         const target = document.querySelector('.content-title') || document.querySelector('.racing-main-wrap');
 
         if (target) {
+            // Ensure parent allows for absolute positioning of child
+            if(getComputedStyle(target).position === 'static') {
+                target.style.position = 'relative';
+            }
+
             const displayDiv = document.createElement('div');
             displayDiv.id = 'rs-display-box';
-            // Styling for the display box
+            
+            // Centered CSS
             displayDiv.style.cssText = `
-                float: right;
+                position: absolute;
+                left: 50%;
+                transform: translateX(-50%);
+                top: 7px;
                 background: #333;
                 color: #fff;
-                padding: 5px 10px;
+                padding: 4px 12px;
                 border-radius: 5px;
                 font-weight: bold;
                 border: 1px solid #555;
-                margin-top: -30px;
-                margin-right: 10px;
                 z-index: 9999;
-                position: relative;
                 box-shadow: 0 0 5px rgba(0,0,0,0.5);
+                font-size: 14px;
             `;
             
-            // Format to 2 decimal places
             displayDiv.innerHTML = `🏁 RS: <span style="color: #00ff00;">${parseFloat(skill).toFixed(2)}</span>`;
 
             // Insert into DOM
@@ -109,21 +137,27 @@
 
     // Main Execution Function
     function init() {
+        // If we already cancelled, don't run init logic
+        if (userCancelled) return;
+
         const key = getApiKey();
         if (key) {
             fetchRacingSkill(key);
         }
     }
 
-    // Observer to handle Torn's dynamic page loading (Single Page Application behavior)
+    // Observer to handle Torn's dynamic page loading
     const observer = new MutationObserver((mutations) => {
+        // Optimization: If user cancelled, stop checking DOM to save performance
+        if (userCancelled) return;
+
         // Check if we are on the racing page and the box isn't there yet
         if (document.querySelector('.racing-main-wrap') && !document.getElementById('rs-display-box')) {
             init();
         }
     });
 
-    // Start observing the body for changes
+    // Start observing
     observer.observe(document.body, { childList: true, subtree: true });
 
 })();
